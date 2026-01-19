@@ -1,0 +1,43 @@
+# --- 模型与大数据 (重点) ---
+# 排除所有 GGUF 模型文件
+*.gguf
+*.bin
+# 排除具体的模型存放目录
+resources/models/
+# 排除可能存在的 Whisper 模型
+*.bin
+
+# --- 构建与分发 ---
+# Electron 打包产物
+out/
+dist/
+release/
+
+# --- 开发环境缓存 ---
+# Vite 缓存 (你提到的 .vite)
+.vite/
+# Node 依赖
+node_modules/
+# 预构建缓存
+.eslintcache
+.stylelintcache
+
+# --- 编辑器相关 ---
+# VS Code 配置 (你提到的 .vscode)
+.vscode/
+# IntelliJ / WebStorm
+.idea/
+
+# --- 系统与临时文件 ---
+.DS_Store
+Thumbs.db
+temp/
+logs/
+*.log
+
+# --- 环境变量 (防止泄露 Key) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
