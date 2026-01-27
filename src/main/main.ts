@@ -1,40 +1,30 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  dialog,
-  protocol,
-  net,
-  session,
-} from "electron";
+import { app, BrowserWindow, ipcMain, protocol } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "url";
 import { randomUUID } from "crypto";
 import started from "electron-squirrel-startup";
+
 import { extractAudio, extractAudioSegments } from "./audio-processing";
 import { ensureModel, checkModelExists } from "./ensureModel";
 import { WhisperRunner } from "./whisper-runner";
-import { readSettings, writeSettings } from "./services/settings";
+
+import { readSettings } from "./services/settings";
 import { StreamingServer } from "./services/server";
 import { SegmentationService } from "./services/segmentation-service";
-import {
-  cleanTempDirOnExit,
-  resetTempDir,
-  getDirectorySizeMB,
-  getTempDir
-} from "./utils/file-utils";
+
+import { cleanTempDirOnExit } from "./utils/file-utils";
+
 import { registerFileHandlers } from "./ipc/files";
 import { registerSegmentationHandlers } from "./ipc/segmentation";
 import { registerLLMHandlers } from "./ipc/llm";
-import { AnkiService } from "./services/anki-service";
 import { registerDictionaryHandlers } from "./ipc/dictionary";
 import { registerAnkiHandlers } from "./ipc/anki";
 import { registerMediaHandlers } from "./ipc/media";
 
+import { AnkiService } from "./services/anki-service";
 
 // 1. 注册特权协议 (必须放在 app.ready 之前)
 protocol.registerSchemesAsPrivileged([
@@ -50,7 +40,8 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
+// 在 Windows 系统上安装/卸载时处理创建/删除快捷方式的操作
+// 标准起手式
 if (started) {
   app.quit();
 }
@@ -60,11 +51,11 @@ const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    frame: false,             // 💡 去掉原生标题栏
-    transparent: true,        // 💡 允许透明
-    backgroundColor: '#00000000', // 💡 背景全透明
-    vibrancy: 'under-window', // macOS 特效
-    visualEffectState: 'active',
+    frame: false, // 💡 去掉原生标题栏
+    transparent: true, // 💡 允许透明
+    backgroundColor: "#00000000", // 💡 背景全透明
+    vibrancy: "under-window", // macOS 特效（模糊、毛玻璃）
+    visualEffectState: "active",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       webSecurity: false, // 开发阶段暂时关掉它，排除 CSP 干扰
@@ -74,9 +65,11 @@ const createWindow = () => {
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    // MAIN_WINDOW_VITE_DEV_SERVER_URL 有值 → 开发环境
   } else {
     mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      // 没有值 → 生产环境
     );
   }
 
@@ -98,6 +91,7 @@ app.on("window-all-closed", () => {
   }
 });
 
+// macOS 特有行为
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
@@ -109,8 +103,7 @@ app.on("will-quit", () => {
   cleanTempDirOnExit();
 });
 
-// 导入视频服务器管理器和视频处理模块
-import { videoServerManager } from "./video-server";
+// 导入视频处理模块
 import { registerVideoProcessingHandlers } from "./video-processing";
 
 // 引入依赖
@@ -123,6 +116,10 @@ ffmpeg.setFfmpegPath(ffmpegStatic);
 // IPC handler for file dialog
 // Migrated to src/main/ipc/files.ts
 
+// _event → Main 事件对象（没用，用 _ 忽略）
+// videoPath → 视频路径
+// startTime / duration → 可选裁剪参数
+// Frontend: const result = await ipcRenderer.invoke("extract-audio", "/path/video.mp4", 0, 10);
 ipcMain.handle(
   "extract-audio",
   async (_event, videoPath: string, startTime?: number, duration?: number) => {
@@ -140,8 +137,9 @@ ipcMain.handle(
     } catch (error) {
       console.error("Error extracting audio:", error);
       return { success: false, error: (error as Error).message };
+      // (error as Error).message 类型断言（type assertion）
     }
-  }
+  },
 );
 
 // IPC handler for model check and download
@@ -165,7 +163,7 @@ ipcMain.handle("download-model", async (event, modelType) => {
   try {
     const result = await ensureModel(modelType, (progress) => {
       // 实时发送进度给前端
-      event.sender.send('model-download-progress', { modelType, progress });
+      event.sender.send("model-download-progress", { modelType, progress });
     });
     return result;
   } catch (error) {
@@ -214,16 +212,15 @@ ipcMain.handle(
         taskId,
         videoPath,
         language,
-        readSettings().activeModel
+        readSettings().activeModel,
       );
       return result;
     } catch (error) {
       console.error("Error running smart Whisper:", error);
       return { success: false, error: (error as Error).message };
     }
-  }
+  },
 );
-
 
 // IPC handler for stopping Whisper
 ipcMain.handle("stop-whisper", async () => {
@@ -277,7 +274,7 @@ ipcMain.handle(
         taskId,
         audioPaths,
         language,
-        segmentDuration
+        segmentDuration,
       );
 
       return { success: true, segments: audioPaths.length };
@@ -285,7 +282,7 @@ ipcMain.handle(
       console.error("Error running Whisper segments:", error);
       return { success: false, error: (error as Error).message };
     }
-  }
+  },
 );
 
 // IPC handler for checking Whisper availability
@@ -371,7 +368,8 @@ app.whenReady().then(async () => {
 
     // Initialize Kuromoji (Non-blocking as per recommendation)
     console.log("🌸 Initializing Kuromoji...");
-    SegmentationService.getInstance().init()
+    SegmentationService.getInstance()
+      .init()
       .then(() => console.log("✅ Kuromoji initialized!"))
       .catch((e) => console.error("❌ Failed to initialize Kuromoji:", e));
 
@@ -387,9 +385,15 @@ app.whenReady().then(async () => {
     // 🚀 尝试初始化 Anki（非阻塞，失败不影响启动）
     // 🚀 延迟 5 秒初始化 Anki，等待 Anki 启动或同步完成
     setTimeout(() => {
-      AnkiService.getInstance().initAnki()
+      AnkiService.getInstance()
+        .initAnki()
         .then(() => console.log("✅ Anki initialized successfully (Lazy)"))
-        .catch(e => console.warn("⚠️ Anki auto-init skipped (App will try again when adding cards):", e.message));
+        .catch((e) =>
+          console.warn(
+            "⚠️ Anki auto-init skipped (App will try again when adding cards):",
+            e.message,
+          ),
+        );
     }, 3000);
 
     // 6. 注册媒体处理服务
@@ -402,7 +406,6 @@ app.whenReady().then(async () => {
     registerLLMHandlers();
 
     // IPC 通信：返回服务器端口给渲染进程 - REMOVED (Duplicate of ipc/files.ts)
-
   } catch (error) {
     console.error("Error starting streaming server:", error);
   }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface QueueItem {
   id: string;
   path: string; // Actual processing path (may be cropped)
@@ -37,16 +38,17 @@ export interface WhisperResult {
 }
 
 export interface DictionaryResult {
-  id: string;          // 单词唯一ID (objectId)
-  word: string;        // 单词本体 (如 "女性")
-  reading: string;     // 读音/假名 (如 "じょせい")
+  id: string; // 单词唯一ID (objectId)
+  word: string; // 单词本体 (如 "女性")
+  reading: string; // 读音/假名 (如 "じょせい")
   pronunciation: string; // 罗马音 (可选)
   definitions: string[]; // 中文释义列表 (如 ["妇女", "女性"])
-  examples: {          // 例句 (只取前3个即可)
+  examples: {
+    // 例句 (只取前3个即可)
     japanese: string;
     translation: string;
   }[];
-  type?: string;       // 词性 (可选)
+  type?: string; // 词性 (可选)
 }
 
 export interface AnkiNoteData {

@@ -5,7 +5,7 @@ import ffmpegStatic from "ffmpeg-static";
 import { getTempDir } from "./utils/file-utils";
 
 // 调试：打印FFmpeg路径
-console.log('🔗 FFmpeg Path:', ffmpegStatic);
+console.log("🔗 FFmpeg Path:", ffmpegStatic);
 
 ffmpeg.setFfmpegPath(ffmpegStatic || "");
 
@@ -13,8 +13,11 @@ const ensureTempDir = async (tempDir: string) => {
   await fs.promises.mkdir(tempDir, { recursive: true });
 };
 
-
-export const extractAudio = async (videoPath: string, startTime?: number, duration?: number) => {
+export const extractAudio = async (
+  videoPath: string,
+  startTime?: number,
+  duration?: number,
+) => {
   const tempDir = getTempDir();
   await ensureTempDir(tempDir);
 
@@ -24,14 +27,18 @@ export const extractAudio = async (videoPath: string, startTime?: number, durati
 
   return new Promise<string>((resolve, reject) => {
     // ✅ 显式类型检查，确保参数安全
-    const start = typeof startTime === 'number' ? startTime : undefined;
-    const dur = typeof duration === 'number' ? duration : undefined;
+    const start = typeof startTime === "number" ? startTime : undefined;
+    const dur = typeof duration === "number" ? duration : undefined;
 
-    console.log('📹 Processing video:', videoPath);
-    console.log('🔊 Output path:', outputPath);
-    console.log('⏰ Start time:', start !== undefined ? `${start}s` : 'not set');
-    console.log('⏱️ Duration:', dur !== undefined ? `${dur}s` : 'not set');
+    console.log("📹 Processing video:", videoPath);
+    console.log("🔊 Output path:", outputPath);
+    console.log(
+      "⏰ Start time:",
+      start !== undefined ? `${start}s` : "not set",
+    );
+    console.log("⏱️ Duration:", dur !== undefined ? `${dur}s` : "not set");
 
+    // 一个正在被一步步配置的 ffmpeg 任务
     let command = ffmpeg(videoPath)
       .noVideo()
       .audioChannels(1)
@@ -41,6 +48,7 @@ export const extractAudio = async (videoPath: string, startTime?: number, durati
     // 添加切片参数（只在明确有数字值时才添加）
     if (start !== undefined) {
       command = command.setStartTime(start);
+      // command.setStartTime(start); 也行
       console.log(`✂️ Applying start time: ${start}s`);
     }
     if (dur !== undefined) {
@@ -48,13 +56,16 @@ export const extractAudio = async (videoPath: string, startTime?: number, durati
       console.log(`✂️ Applying duration: ${dur}s`);
     }
 
+    // EventEmitter
+    // 当 ffmpeg 正常结束 → resolve Promise
+    // 当 ffmpeg 出错     → reject Promise
     command
       .on("end", () => {
-        console.log('✅ Audio extraction completed successfully');
+        console.log("✅ Audio extraction completed successfully");
         resolve(outputPath);
       })
       .on("error", (error) => {
-        console.error('❌ Audio extraction failed:', error);
+        console.error("❌ Audio extraction failed:", error);
         reject(error);
       })
       .save(outputPath);
@@ -67,7 +78,10 @@ export const extractAudio = async (videoPath: string, startTime?: number, durati
  * @param segmentDuration 每个片段的时长（秒），默认600秒（10分钟）
  * @returns 返回所有音频片段的路径数组
  */
-export const extractAudioSegments = async (videoPath: string, segmentDuration = 600): Promise<string[]> => {
+export const extractAudioSegments = async (
+  videoPath: string,
+  segmentDuration = 600,
+): Promise<string[]> => {
   const tempDir = getTempDir();
   await ensureTempDir(tempDir);
 
@@ -76,8 +90,8 @@ export const extractAudioSegments = async (videoPath: string, segmentDuration = 
   await fs.promises.mkdir(segmentsDir, { recursive: true });
 
   return new Promise((resolve, reject) => {
-    console.log('📹 Processing video for segments:', videoPath);
-    console.log('⏱️ Segment duration:', segmentDuration, 'seconds');
+    console.log("📹 Processing video for segments:", videoPath);
+    console.log("⏱️ Segment duration:", segmentDuration, "seconds");
 
     // 使用 ffmpeg 的 segment 功能将音频切分为多个片段
     const outputPattern = path.join(segmentsDir, "chunk_%03d.wav");
@@ -90,26 +104,37 @@ export const extractAudioSegments = async (videoPath: string, segmentDuration = 
       .outputOption("-f segment")
       .outputOption(`-segment_time ${segmentDuration}`)
       .outputOption("-reset_timestamps 1") // 重置每个片段的时间戳
+      /**
+        ffmpeg input.mp4 \
+          -f segment \
+          -segment_time 600 \
+          -reset_timestamps 1 \
+          chunk_%03d.wav
+      */
       .on("end", async () => {
-        console.log('✅ Audio segmentation completed successfully');
-        
+        console.log("✅ Audio segmentation completed successfully");
+
         // 获取所有生成的片段文件
         try {
           const files = await fs.promises.readdir(segmentsDir);
+          // readdir 不保证顺序
+          // 如果后面要按时间顺序处理音频（比如 Whisper）——顺序一错，文本就乱了
           const segmentFiles = files
-            .filter(file => file.startsWith("chunk_") && file.endsWith(".wav"))
+            .filter(
+              (file) => file.startsWith("chunk_") && file.endsWith(".wav"),
+            )
             .sort()
-            .map(file => path.join(segmentsDir, file));
+            .map((file) => path.join(segmentsDir, file));
 
-          console.log('📁 Generated segments:', segmentFiles.length);
+          console.log("📁 Generated segments:", segmentFiles.length);
           resolve(segmentFiles);
         } catch (error) {
-          console.error('❌ Error reading segment files:', error);
+          console.error("❌ Error reading segment files:", error);
           reject(error);
         }
       })
       .on("error", (error) => {
-        console.error('❌ Audio segmentation failed:', error);
+        console.error("❌ Audio segmentation failed:", error);
         reject(error);
       })
       .save(outputPattern);
