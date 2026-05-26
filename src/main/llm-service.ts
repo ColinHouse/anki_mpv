@@ -40,7 +40,8 @@ export class LLMService {
     try {
       // ✅ Critical fix: Use dynamic import for ESM module
       // This tells Node.js to load the module asynchronously in ESM mode
-      const { getLlama, LlamaChatSession } = await import("node-llama-cpp");
+      const localLlmPackage = "node-llama-cpp";
+      const { getLlama, LlamaChatSession } = await import(localLlmPackage);
       
       const modelPath = getModelPath(modelName);
       console.log(`🧠 Loading LLM from: ${modelPath}`);

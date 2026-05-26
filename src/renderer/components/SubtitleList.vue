@@ -1,10 +1,13 @@
 <template>
-  <section class="bg-white rounded-xl shadow-lg flex flex-col h-full overflow-hidden">
-    <div class="p-4 border-b border-gray-100 bg-gray-50/50 space-y-3">
+  <section class="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-full overflow-hidden">
+    <div class="p-4 border-b border-gray-100 bg-white space-y-3">
       
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <h2 class="text-lg font-bold text-gray-800">字幕列表</h2>
+          <h2 class="text-lg font-bold text-gray-900">Interactive Subtitle Timeline</h2>
+          <span class="px-2 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+            {{ providerStatusLabel }}
+          </span>
           <label class="flex items-center space-x-1.5 cursor-pointer text-sm text-gray-600 hover:text-gray-900 bg-white px-2 py-1 rounded border border-gray-200 transition-colors">
             <input
               type="checkbox"
@@ -14,24 +17,8 @@
             <span>双语对照</span>
           </label>
         </div>
-        <div class="flex items-center gap-2">
-          <button
-            @click="importSubtitles"
-            class="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5 shadow-sm"
-            title="导入 .srt 文件"
-          >
-            📂 导入
-          </button>
-          
-          <button
-            @click="startRecognition"
-            :disabled="isSystemBusy"
-            class="px-4 py-1.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg hover:from-blue-600 hover:to-blue-700 shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span v-if="isRecognitionRunning" class="animate-spin">⏳</span>
-            <span v-else>✨</span>
-            {{ isRecognitionRunning ? '识别中...' : '开始识别' }}
-          </button>
+        <div class="text-xs text-gray-500">
+          {{ isLoading ? "Loading transcript..." : "Click text to inspect words" }}
         </div>
       </div>
       <div class="flex items-center justify-between text-sm">
@@ -68,15 +55,43 @@
       @scroll="onSubtitleScroll"
     >
       <div
+        v-if="subtitles.length === 0"
+        class="h-full min-h-[260px] flex flex-col items-center justify-center text-center px-8 py-12"
+      >
+        <h3 class="text-base font-semibold text-gray-800">
+          Load subtitles or run Mock Cloud ASR to begin.
+        </h3>
+        <p class="mt-2 text-sm text-gray-500 leading-6 max-w-sm">
+          Imported subtitles are the stable path for demos. Mock Cloud ASR creates a local sample transcript when no subtitle file is available.
+        </p>
+        <div class="mt-5 flex items-center gap-3">
+          <button
+            @click="importSubtitle()"
+            :disabled="isLoading"
+            class="px-3 py-2 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Import .srt/.vtt
+          </button>
+          <button
+            @click="loadDemoTranscript()"
+            :disabled="isLoading"
+            class="px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+          >
+            Start Demo Transcript
+          </button>
+        </div>
+      </div>
+
+      <div
         v-for="subtitle in subtitles"
         :key="subtitle.id"
         :id="`sub-${subtitle.id}`"
         @dblclick="startEdit(subtitle.id)"
         :class="[
-          'p-3 rounded-lg transition-colors group',
+          'p-3 rounded-lg transition-colors group border',
           currentSubtitleId === subtitle.id
-            ? 'bg-blue-50 text-blue-800 border border-blue-200'
-            : 'hover:bg-gray-50 cursor-pointer',
+            ? 'bg-blue-50 text-blue-800 border-blue-200'
+            : 'border-transparent hover:bg-gray-50 cursor-pointer',
         ]"
       >
         <div v-if="editingId === subtitle.id" class="space-y-2">
@@ -167,8 +182,8 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import { formatTime, parseSRT} from "../utils/subtitle-utils";
-import { useWhisper } from "../composables/useWhisper";
+import { formatTime } from "../utils/subtitle-utils";
+import { useTranscription } from "../composables/useTranscription";
 import { useVideoQueue } from "../composables/useVideoQueue";
 import { useSegmentation } from "../composables/useSegmentation";
 import { useDictionary } from "../composables/useDictionary";
@@ -192,11 +207,12 @@ const {
   subtitles,
   isPolishing,
   polishingIds,
-  whisperStatus,
-  startRecognition,
-  isRecognitionRunning,
+  providerStatusLabel,
+  importSubtitle,
+  loadDemoTranscript,
+  isLoading,
   isSystemBusy
-} = useWhisper();
+} = useTranscription();
 
 const { currentVideoPath } = useVideoQueue();
 
@@ -216,7 +232,7 @@ const testSegment = async (text: string) => {
 
 // UI State
 const showTranslation = ref(true);
-const isTranslating = ref(false); // Local state for translation button (or move to useWhisper if global?) App.vue had it local.
+const isTranslating = ref(false);
 const editingId = ref<string | null>(null);
 const isUserScrolling = ref(false);
 let scrollTimeout: NodeJS.Timeout | null = null;
@@ -266,39 +282,6 @@ const handleBatchTranslate = async () => {
     alert("批量翻译出错: " + (e as any).message);
   } finally {
     isTranslating.value = false;
-  }
-};
-
-const importSubtitles = async () => {
-  try {
-    const result = await (window as any).api.invoke("import-srt");
-    if (!result.success) {
-      if (result.error && !result.error.includes("取消")) {
-        alert(`导入失败: ${result.error}`);
-      }
-      return;
-    }
-    if (!result.content) {
-      alert("导入的文件内容为空");
-      return;
-    }
-    const parsedSubtitles = parseSRT(result.content);
-    if (!parsedSubtitles || parsedSubtitles.length === 0) {
-      alert("无法解析字幕文件，请确保文件格式正确");
-      return;
-    }
-    subtitles.value = parsedSubtitles;
-    console.log("前端收到字幕总数:", subtitles.value.length); // 🔍 调试日志
-    // whisperStatus logic removed or requires accessing global whisperStatus via useWhisper if needed.
-    // In App.vue it did: whisperStatus.value.status = "completed";
-    if (whisperStatus.value) {
-        whisperStatus.value.status = "completed";
-        whisperStatus.value.progress = 1.0;
-    }
-    alert(`字幕导入成功！共 ${parsedSubtitles.length} 条字幕`);
-  } catch (error) {
-    console.error("Error importing subtitles:", error);
-    alert(`导入字幕失败: ${(error as Error).message}`);
   }
 };
 
@@ -419,8 +402,6 @@ watch(() => currentSubtitleId.value, (newId) => {
 // Since SubtitleList is part of the view, we can put them here too,
 // OR keep them in App.vue if they are "global app logic".
 // BUT `startTranslationOnly` sets `isTranslating` locally here, so we need to know when it finishes.
-// Let's listen here? Or rely on useWhisper?
-// useWhisper doesn't export `isTranslating` currently (check file).
 // App.vue defined `isTranslating` locally.
 // I will keep the listeners here for now to close the loop on the button state.
 
@@ -428,10 +409,7 @@ import { onMounted, onUnmounted } from "vue";
 
 const onPolishComplete = () => {
   isTranslating.value = false;
-  isPolishing.value = false; // also update global? global isPolishing is from useWhisper.
-  // Wait, isPolishing is destructured from useWhisper. It is a Ref.
-  // We can write to it if it's a ref.
-  // Yes, useWhisper exports refs.
+  isPolishing.value = false;
   alert("✨ 处理完成！");
 };
 
@@ -446,7 +424,7 @@ onMounted(() => {
     if ((window as any).api.on) {
         // polish-update is handled globally? 
         // No, App.vue handled it to update subtitles.
-        // But subtitles are shared via useWhisper. So whoever updates them updates everyone.
+        // Subtitles are shared through the transcription composable.
         // Let's add listener here to update subtitles (as App.vue did).
         
         (window as any).api.on("polish-update", (data: any) => {

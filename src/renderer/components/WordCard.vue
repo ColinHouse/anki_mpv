@@ -66,7 +66,7 @@
                         <option v-for="deck in deckList" :key="deck" :value="deck">{{ deck }}</option>
                       </select>
                       <div v-else class="text-xs text-red-400">
-                        (Anki 未连接)
+                        AnkiConnect is not available. Please open Anki and enable the AnkiConnect add-on.
                       </div>
 
                       <button 
@@ -76,9 +76,9 @@
                          title="保存到 Anki"
                        >
                          <span class="font-bold text-lg leading-none" style="margin-bottom:2px">★</span>
-                         <span v-if="addSuccess">已添加</span>
+                         <span v-if="addSuccess">Card Created</span>
                          <span v-else-if="isAdding">...</span>
-                         <span v-else>+ Anki</span>
+                         <span v-else>Create Anki Card</span>
                       </button>
                 </div>
             </div>

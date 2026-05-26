@@ -4,14 +4,10 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 import { app, BrowserWindow, ipcMain, protocol } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "crypto";
 import started from "electron-squirrel-startup";
 
-import { extractAudio, extractAudioSegments } from "./audio-processing";
-import { ensureModel, checkModelExists } from "./ensureModel";
-import { WhisperRunner } from "./whisper-runner";
+import { extractAudio } from "./audio-processing";
 
-import { readSettings } from "./services/settings";
 import { StreamingServer } from "./services/server";
 import { SegmentationService } from "./services/segmentation-service";
 
@@ -23,6 +19,7 @@ import { registerLLMHandlers } from "./ipc/llm";
 import { registerDictionaryHandlers } from "./ipc/dictionary";
 import { registerAnkiHandlers } from "./ipc/anki";
 import { registerMediaHandlers } from "./ipc/media";
+import { registerTranscriptionHandlers } from "./ipc/transcription";
 
 import { AnkiService } from "./services/anki-service";
 
@@ -142,35 +139,11 @@ ipcMain.handle(
   },
 );
 
-// IPC handler for model check and download
-ipcMain.handle("ensure-model", async (_event, modelType) => {
-  try {
-    const result = await ensureModel(modelType);
-    return result;
-  } catch (error) {
-    console.error("Error ensuring model:", error);
-    return false;
-  }
-});
-
-// check-model-status: 接收 modelType，调用 ensureModel 中的检查逻辑，返回是否存在
-ipcMain.handle("check-model-status", async (_event, modelType) => {
-  return checkModelExists(modelType);
-});
-
-// download-model: 接收 modelType，调用 ensureModel 进行下载
-ipcMain.handle("download-model", async (event, modelType) => {
-  try {
-    const result = await ensureModel(modelType, (progress) => {
-      // 实时发送进度给前端
-      event.sender.send("model-download-progress", { modelType, progress });
-    });
-    return result;
-  } catch (error) {
-    console.error("Error downloading model:", error);
-    return false;
-  }
-});
+// Deprecated local speech model IPC. The default workflow is provider-based
+// transcription through imported subtitles, mock cloud, or future cloud ASR.
+ipcMain.handle("ensure-model", async () => true);
+ipcMain.handle("check-model-status", async () => false);
+ipcMain.handle("download-model", async () => false);
 
 // 注册 IPC Handlers
 // Migrated to src/main/ipc/files.ts
@@ -178,129 +151,23 @@ ipcMain.handle("download-model", async (event, modelType) => {
 // clear-temp-dir: 重置临时目录
 // Migrated to src/main/ipc/files.ts
 
-// 创建Whisper Runner实例
-let whisperRunner: WhisperRunner | null = null;
+ipcMain.handle("run-whisper", async () => ({
+  success: false,
+  error: "Local Whisper transcription is deprecated. Use imported subtitles or Mock Cloud ASR.",
+}));
 
-// IPC handler for running Whisper (smart mode)
-ipcMain.handle(
-  "run-whisper",
-  async (_event, videoPath: string, language = "ja") => {
-    try {
-      if (!videoPath) {
-        return { success: false, error: "Missing video path" };
-      }
+ipcMain.handle("run-whisper-segments", async () => ({
+  success: false,
+  error: "Local Whisper transcription is deprecated. Use imported subtitles or Mock Cloud ASR.",
+}));
 
-      if (!fs.existsSync(videoPath)) {
-        return { success: false, error: "Video file not found" };
-      }
+ipcMain.handle("stop-whisper", async () => ({ success: true }));
 
-      // 获取主窗口实例
-      const mainWindow = BrowserWindow.getAllWindows()[0];
-      if (!mainWindow) {
-        return { success: false, error: "Main window not found" };
-      }
-
-      // 创建WhisperRunner实例
-      whisperRunner = new WhisperRunner(mainWindow);
-
-      // 生成唯一任务ID
-      const taskId = randomUUID();
-      console.log(`🆔 Generated task ID: ${taskId}`);
-
-      // 使用智能运行模式（自动选择单段或分段）
-      const result = await whisperRunner.smartRunWhisper(
-        taskId,
-        videoPath,
-        language,
-        readSettings().activeModel,
-      );
-      return result;
-    } catch (error) {
-      console.error("Error running smart Whisper:", error);
-      return { success: false, error: (error as Error).message };
-    }
-  },
-);
-
-// IPC handler for stopping Whisper
-ipcMain.handle("stop-whisper", async () => {
-  try {
-    if (whisperRunner) {
-      whisperRunner.stopWhisper();
-      return { success: true };
-    } else {
-      return { success: false, error: "No active Whisper process" };
-    }
-  } catch (error) {
-    console.error("Error stopping Whisper:", error);
-    return { success: false, error: (error as Error).message };
-  }
-});
-
-// IPC handler for running segmented Whisper recognition
-ipcMain.handle(
-  "run-whisper-segments",
-  async (_event, videoPath: string, language = "ja", segmentDuration = 600) => {
-    try {
-      if (!videoPath) {
-        return { success: false, error: "Missing video path" };
-      }
-
-      if (!fs.existsSync(videoPath)) {
-        return { success: false, error: "Video file not found" };
-      }
-
-      // 获取主窗口实例
-      const mainWindow = BrowserWindow.getAllWindows()[0];
-      if (!mainWindow) {
-        return { success: false, error: "Main window not found" };
-      }
-
-      // 创建WhisperRunner实例
-      whisperRunner = new WhisperRunner(mainWindow);
-
-      // 分段提取音频
-      console.log(`🎵 Starting audio segmentation for ${videoPath}`);
-      const audioPaths = await extractAudioSegments(videoPath, segmentDuration);
-      console.log(`📁 Generated ${audioPaths.length} audio segments`);
-
-      // 运行分段识别
-      // 生成唯一任务ID
-      const taskId = randomUUID();
-      console.log(`🆔 Generated task ID for segments: ${taskId}`);
-
-      // 运行分段识别
-      await whisperRunner.runWhisperSegments(
-        taskId,
-        audioPaths,
-        language,
-        segmentDuration,
-      );
-
-      return { success: true, segments: audioPaths.length };
-    } catch (error) {
-      console.error("Error running Whisper segments:", error);
-      return { success: false, error: (error as Error).message };
-    }
-  },
-);
-
-// IPC handler for checking Whisper availability
-ipcMain.handle("check-whisper-availability", async () => {
-  try {
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    if (!mainWindow) {
-      return { available: false, error: "Main window not found" };
-    }
-
-    const runner = new WhisperRunner(mainWindow);
-    const available = runner.isWhisperAvailable();
-    return { available };
-  } catch (error) {
-    console.error("Error checking Whisper availability:", error);
-    return { available: false, error: (error as Error).message };
-  }
-});
+ipcMain.handle("check-whisper-availability", async () => ({
+  available: false,
+  deprecated: true,
+  error: "Local Whisper is no longer part of the default demo workflow.",
+}));
 
 // IPC handler for getting video information
 ipcMain.handle("get-video-info", async (_event, filePath: string) => {
@@ -401,6 +268,9 @@ app.whenReady().then(async () => {
 
     // 注册文件相关 IPC Handlers
     registerFileHandlers();
+
+    // 注册转写 Provider IPC Handlers
+    registerTranscriptionHandlers();
 
     // 注册 LLM 相关 IPC Handlers
     registerLLMHandlers();

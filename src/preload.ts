@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld('api', {
   runWhisperSegments: (videoPath: string, language: string, segmentDuration: number) => ipcRenderer.invoke('run-whisper-segments', videoPath, language, segmentDuration),
   stopWhisper: () => ipcRenderer.invoke('stop-whisper'),
   checkWhisperAvailability: () => ipcRenderer.invoke('check-whisper-availability'),
+  importSubtitleTranscript: (input: any) => ipcRenderer.invoke('transcription:importSubtitle', input),
+  runMockCloudTranscription: (input: any) => ipcRenderer.invoke('transcription:runMockCloud', input),
+  runCloudTranscription: (input: any) => ipcRenderer.invoke('transcription:runCloud', input),
+  getCachedTranscript: (input: any) => ipcRenderer.invoke('transcription:getCached', input),
+  clearTranscriptCache: () => ipcRenderer.invoke('transcription:clearCache'),
   getVideoInfo: (filePath: string) => ipcRenderer.invoke('get-video-info', filePath),
   trimVideo: (inputPath: string, startTime: number, endTime: number) => ipcRenderer.invoke('trim-video', inputPath, startTime, endTime),
   onWhisperStatus: (callback: (event: any, progress: any) => void) => {

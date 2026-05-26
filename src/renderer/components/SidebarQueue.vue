@@ -187,11 +187,11 @@
       <button
         @click="startBatchProcessing"
         class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-        :disabled="isAnyTaskRunning || videoQueue.length === 0 || !isWhisperAvailable"
+        :disabled="isAnyTaskRunning || videoQueue.length === 0"
       >
         <span v-if="isAutoBatchMode" class="animate-spin">🔄</span>
         <span v-else>▶️</span>
-        {{ isAutoBatchMode ? "处理中..." : "开始批量处理" }}
+        {{ isAutoBatchMode ? "生成中..." : "批量演示转写" }}
       </button>
     </div>
 
@@ -208,8 +208,8 @@
       <button
         @click="startBatchProcessing"
         class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
-        :disabled="isAnyTaskRunning || videoQueue.length === 0 || !isWhisperAvailable"
-        title="开始批量处理"
+        :disabled="isAnyTaskRunning || videoQueue.length === 0"
+        title="批量演示转写"
       >
         <span v-if="isAutoBatchMode" class="animate-spin">🔄</span>
         <span v-else>▶️</span>
@@ -280,12 +280,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useVideoQueue } from '../composables/useVideoQueue';
-import { useWhisper } from '../composables/useWhisper';
+import { useTranscription } from '../composables/useTranscription';
 
 const emit = defineEmits(['open-crop', 'select-video']);
 
 const { videoQueue, isSidebarOpen, outputDir, addVideosToQueue, removeFromQueue } = useVideoQueue();
-const { isAutoBatchMode, isWhisperAvailable, startBatchProcessing } = useWhisper();
+const { isAutoBatchMode, startBatchProcessing } = useTranscription();
 
 // Batch Trim State
 const showBatchTrim = ref(false);

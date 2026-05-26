@@ -1,3 +1,8 @@
+/**
+ * @deprecated Local Whisper execution is retained only as legacy reference code.
+ * The default transcription workflow now uses provider-based services in
+ * src/main/services/transcription and does not require local speech models.
+ */
 import {spawn, ChildProcess } from "child_process";
 import fs from "node:fs";
 import path from "node:path";

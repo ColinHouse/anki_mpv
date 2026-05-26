@@ -2,8 +2,7 @@ import path from "path";
 import { app } from "electron";
 import fs from "fs";
 
-// Dynamic import for node-llama-cpp compatibility with Electron
-const llamaPromise = import("node-llama-cpp");
+const LOCAL_LLM_PACKAGE = "node-llama-cpp";
 
 function getStandardModelPath() {
   // 🔒 强制锁定：项目根目录/resources/models/gemma-2-2b-it.Q4_K_M.gguf
@@ -36,7 +35,7 @@ export class LLMService {
         throw new Error(`Model not found at: ${this.modelPath}`);
       }
 
-      const { getLlama, LlamaChatSession } = await llamaPromise;
+      const { getLlama, LlamaChatSession } = await import(LOCAL_LLM_PACKAGE);
       const llama = await getLlama();
       
       console.log("🧠 Loading Local Model:", this.modelPath);

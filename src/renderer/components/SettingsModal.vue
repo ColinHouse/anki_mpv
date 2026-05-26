@@ -35,84 +35,45 @@
 
         <!-- Right Content -->
         <div class="flex-1 p-6 overflow-y-auto">
-          <!-- Tab 1: 模型管理 -->
+          <!-- Tab 1: Transcription -->
           <div v-if="activeTab === 'models'" class="space-y-4">
-            <h3 class="text-lg font-medium">模型管理</h3>
+            <h3 class="text-lg font-medium">Transcription Workflow</h3>
 
-            <!-- GPU 开关 (已移除) -->
+            <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
+              <h4 class="font-semibold text-blue-900">Subtitle-first demos</h4>
+              <p class="text-sm text-blue-800 mt-1 leading-6">
+                The app now runs without local speech models. Import .srt/.vtt files for stable demos, use cached transcripts, or generate a local Mock Cloud transcript.
+              </p>
+            </div>
 
-            <!-- 模型卡片 -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div
-                v-for="model in models"
-                :key="model.type"
-                class="border rounded-lg p-4"
-              >
-                <h4 class="font-medium">{{ model.name }}</h4>
-                <p class="text-sm text-gray-600 mb-2">
-                  {{ model.description }}
-                </p>
-
-                <!-- 状态显示 -->
-                <div class="flex items-center justify-between mb-3">
-                  <span
-                    :class="[
-                      'px-2 py-1 rounded text-xs font-medium',
-                      model.status === 'downloaded'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800',
-                    ]"
-                  >
-                    {{ model.status === "downloaded" ? "已下载" : "未下载" }}
-                  </span>
-
-                  <!-- 下载进度 -->
-                  <div
-                    v-if="model.downloading"
-                    class="w-full bg-gray-200 rounded-full h-2"
-                  >
-                    <div
-                      class="bg-blue-600 h-2 rounded-full"
-                      :style="{ width: model.progress + '%' }"
-                    ></div>
+            <div class="grid grid-cols-1 gap-3">
+              <div class="border border-emerald-200 rounded-lg p-4 bg-emerald-50">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="font-medium text-gray-900">Import Subtitle</h4>
+                    <p class="text-sm text-gray-600 mt-1">Best for stable demos and real study sessions.</p>
                   </div>
+                  <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white text-emerald-700 border border-emerald-200">Primary</span>
                 </div>
+              </div>
 
-                <!-- 操作按钮 -->
-                <div class="flex gap-2">
-                  <button
-                    v-if="model.status === 'not_downloaded'"
-                    @click="downloadModel(model.type)"
-                    :disabled="model.downloading"
-                    class="flex-1 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 disabled:opacity-50"
-                  >
-                    {{ model.downloading ? "下载中..." : "下载" }}
-                  </button>
+              <div class="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="font-medium text-gray-900">Mock Cloud ASR</h4>
+                    <p class="text-sm text-gray-600 mt-1">Demo transcript generated locally. No paid API or GPU required.</p>
+                  </div>
+                  <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white text-blue-700 border border-blue-200">Demo</span>
+                </div>
+              </div>
 
-                  <button
-                    v-if="model.status === 'downloaded'"
-                    @click="setActiveModel(model.type)"
-                    :class="[
-                      'flex-1 px-3 py-1 rounded',
-                      settings.activeModel === model.type
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300',
-                    ]"
-                  >
-                    {{
-                      settings.activeModel === model.type
-                        ? "当前默认"
-                        : "设为默认"
-                    }}
-                  </button>
-
-                  <button
-                    v-if="model.status === 'downloaded'"
-                    @click="deleteModel(model.type)"
-                    class="px-3 py-1 rounded bg-red-500 text-white hover:bg-red-600"
-                  >
-                    删除
-                  </button>
+              <div class="border border-amber-200 rounded-lg p-4 bg-amber-50">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="font-medium text-gray-900">Cloud ASR</h4>
+                    <p class="text-sm text-gray-600 mt-1">Provider interface is ready for future OpenAI, Google, Azure, or AWS integration.</p>
+                  </div>
+                  <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white text-amber-700 border border-amber-200">Configurable</span>
                 </div>
               </div>
             </div>
@@ -255,7 +216,7 @@
       <div class="flex justify-between p-6 border-t">
         <div class="text-sm text-gray-600 space-y-1">
           <div>状态信息:</div>
-          <div>• Whisper可用: {{ isWhisperAvailable ? "是" : "否" }}</div>
+          <div>• Transcription workflow: {{ isTranscriptionAvailable ? "Ready" : "Unavailable" }}</div>
           <div>• 当前文件: {{ selectedFile || "未选择" }}</div>
           <div>• 视频时长: {{ formatTime(videoDuration) }}</div>
         </div>
@@ -264,7 +225,7 @@
             @click="handleCheckEnvironment"
             class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
           >
-            检查环境
+            Check Workflow
           </button>
 
           <button
@@ -300,20 +261,11 @@ interface Settings {
 // 全局状态（从 App.vue 传递或通过事件通信）
 // 注意：window.api 的类型已经在 main.ts 中声明，这里不需要重复声明
 
-interface Model {
-  type: "base" | "small" | "medium";
-  name: string;
-  description: string;
-  status: "not_downloaded" | "downloaded";
-  downloading: boolean;
-  progress: number;
-}
-
 const props = defineProps<{
   show: boolean;
   currentFile?: string;
   videoDuration?: number;
-  isWhisperReady?: boolean;
+  isTranscriptionReady?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -324,7 +276,7 @@ const emit = defineEmits<{
 const selectedFile = ref<string | null>(null);
 const selectedFilePath = ref<string | null>(null);
 const videoDuration = ref<number>(0);
-const isWhisperAvailable = ref(false);
+const isTranscriptionAvailable = ref(true);
 
 // 监听 props 变化，更新本地状态
 watch(() => props.currentFile, (newVal) => {
@@ -335,8 +287,8 @@ watch(() => props.videoDuration, (newVal) => {
   videoDuration.value = newVal || 0;
 });
 
-watch(() => props.isWhisperReady, (newVal) => {
-  isWhisperAvailable.value = newVal || false;
+watch(() => props.isTranscriptionReady, (newVal) => {
+  isTranscriptionAvailable.value = newVal !== false;
 });
 
 const settings = ref<Settings>({
@@ -368,35 +320,8 @@ const llmModelStatus = ref<Record<string, { installed: boolean; downloading: boo
 });
 const ollamaHealthStatus = ref<'unknown' | 'healthy' | 'unhealthy'>('unknown');
 
-const models = ref<Model[]>([
-  {
-    type: "base",
-    name: "Base",
-    description: "基础模型，体积较小",
-    status: "not_downloaded",
-    downloading: false,
-    progress: 0,
-  },
-  {
-    type: "small",
-    name: "Small",
-    description: "小模型，平衡速度与精度",
-    status: "not_downloaded",
-    downloading: false,
-    progress: 0,
-  },
-  {
-    type: "medium",
-    name: "Medium",
-    description: "中等模型，精度更高",
-    status: "not_downloaded",
-    downloading: false,
-    progress: 0,
-  },
-]);
-
 const tabs = [
-  { id: "models", name: "模型" },
+  { id: "models", name: "Transcription" },
   { id: "storage", name: "存储" },
   { id: "lab", name: "实验室" },
 ];
@@ -406,30 +331,7 @@ const activeTab = ref("models");
 // 初始化
 onMounted(() => {
   loadSettings();
-  checkModelStatus();
   getTempSize();
-  
-  // 监听下载进度 (修复参数签名)
-  // 注意：这里只有一个参数 data，没有 event！
-  window.api.on('model-download-progress', (data: any) => {
-    console.log('收到进度:', data); // 调试日志
-    if (!data || !data.modelType) return;
-
-    const { modelType, progress } = data;
-    // 更新对应模型的下载状态
-    const model = models.value.find(m => m.type === modelType);
-    if (model) {
-      model.downloading = true;
-      model.progress = progress;
-
-      // 下载完成
-      if (progress >= 100) {
-        model.downloading = false;
-        model.status = "downloaded";
-        checkModelStatus(); // 刷新一下状态
-      }
-    }
-  });
   
   // Check LLM model status on mount
   checkLlmModelStatus();
@@ -476,69 +378,6 @@ async function loadSettings() {
   }
 }
 
-// 检查模型状态
-async function checkModelStatus() {
-  for (const model of models.value) {
-    try {
-      const exists = await window.api.invoke("check-model-status", model.type);
-      model.status = exists ? "downloaded" : "not_downloaded";
-    } catch (error) {
-      console.error(`检查模型 ${model.type} 状态失败:`, error);
-    }
-  }
-}
-
-// 下载模型
-async function downloadModel(type: "base" | "small" | "medium") {
-  const model = models.value.find((m) => m.type === type);
-  if (!model) return;
-
-  // 立即将状态设为 downloading 并显示进度条容器
-  model.downloading = true;
-  model.progress = 0;
-  model.status = "not_downloaded"; // 确保状态正确
-
-  try {
-    const result = await window.api.invoke("download-model", type);
-    if (result) {
-      // 下载完成即视为安装成功（后端直接写文件到 resources/models）
-      model.status = "downloaded";
-      model.downloading = false;
-      model.progress = 100;
-    } else {
-      // 下载失败，重置状态
-      model.downloading = false;
-      model.progress = 0;
-    }
-  } catch (error) {
-    console.error(`下载模型 ${type} 失败:`, error);
-    model.downloading = false;
-    model.progress = 0;
-  }
-}
-
-// 设置活跃模型
-async function setActiveModel(type: "base" | "small" | "medium") {
-  settings.value.activeModel = type;
-  // ✅ 修复：剥离 Proxy 包装，避免 IPC 克隆错误
-  const plainSettings = JSON.parse(JSON.stringify(settings.value));
-  await window.api.invoke("save-settings", plainSettings);
-}
-
-// 删除模型
-async function deleteModel(type: "base" | "small" | "medium") {
-  const model = models.value.find((m) => m.type === type);
-  if (!model) return;
-
-  try {
-    // 这里需要添加删除模型文件的 IPC 调用
-    // 暂时先标记为未下载
-    model.status = "not_downloaded";
-  } catch (error) {
-    console.error(`删除模型 ${type} 失败:`, error);
-  }
-}
-
 // 获取临时文件大小
 async function getTempSize() {
   try {
@@ -565,59 +404,8 @@ async function clearTemp() {
 
 // 检查环境
 async function checkEnvironment() {
-  try {
-    console.log("开始检查环境...");
-
-    const modelResult = await window.api.invoke("ensure-model");
-    if (!modelResult) {
-      alert("模型检查失败，请检查网络连接");
-      return;
-    }
-
-    if (selectedFilePath.value) {
-      const audioResult = await window.api.invoke(
-        "extract-audio",
-        selectedFilePath.value
-      );
-      if (!audioResult?.success) {
-        alert(`音频提取失败: ${audioResult?.error || "未知错误"}`);
-        return;
-      }
-    }
-
-    const whisperResult = await window.api.invoke("check-whisper-availability");
-    if (whisperResult?.available) {
-      isWhisperAvailable.value = true;
-      console.log("Whisper可用");
-    } else {
-      isWhisperAvailable.value = false;
-      alert(
-        `Whisper不可用: ${whisperResult?.error || "请检查Whisper可执行文件"}`
-      );
-    }
-
-    // ✅ Show success alert
-    console.log("✅ 环境检查完成，所有功能正常");
-    alert("环境检查正常，所有功能就绪！");
-  } catch (error) {
-    console.error("环境检查失败:", error);
-    alert(`环境检查失败: ${(error as Error).message}`);
-  }
-}
-
-// 检查模型
-async function checkModel() {
-  try {
-    const result = await window.api.invoke("ensure-model");
-    if (result) {
-      alert("模型检查成功！");
-    } else {
-      alert("模型检查失败，请检查网络连接");
-    }
-  } catch (error) {
-    console.error("模型检查失败:", error);
-    alert(`模型检查失败: ${(error as Error).message}`);
-  }
+  isTranscriptionAvailable.value = true;
+  alert("Transcription workflow is ready. Use imported subtitles or Mock Cloud ASR for demos.");
 }
 
 // 格式化时间函数
@@ -705,22 +493,12 @@ async function handleCheckEnvironment() {
   
   // 1. Check LLM
   await checkLlmModelStatus();
-  
-  // 2. Original Whisper check logic (simplified)
-  let whisperMsg = "";
-  try {
-      const whisperResult = await window.api.invoke("check-whisper-availability");
-      isWhisperAvailable.value = whisperResult?.available || false;
-      whisperMsg = isWhisperAvailable.value ? "✅ Whisper 服务可用" : "❌ Whisper 服务不可用";
-  } catch (e) {
-      whisperMsg = "❌ Whisper 检查失败";
-  }
 
-  // 3. Show Result
+  // 2. Show Result
   if (llmModelInstalled.value) {
-    alert(`✅ 环境正常：模型已安装。\n路径: resources/models/gemma-2-2b-it.Q4_K_M.gguf\n\n${whisperMsg}`);
+    alert("Workflow ready. Transcription does not require local models. Optional LLM model is installed.");
   } else {
-    alert(`❌ 环境异常：未检测到 LLM 模型文件。\n请点击'导入本地文件'或'下载'。\n\n${whisperMsg}`);
+    alert("Workflow ready. Transcription does not require local models. Optional LLM model is not installed.");
   }
 }
 

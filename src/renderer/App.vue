@@ -94,22 +94,26 @@
       />
 
       <!-- 主内容区 -->
-      <main
-        class="flex-1 flex flex-col min-w-0 bg-transparent relative overflow-hidden"
-      >
-        <div class="flex-1 overflow-y-auto p-4 space-y-6">
-          <!-- 视频播放区 -->
-          <VideoPlayer
-            ref="videoPlayerRef"
-            :server-port="serverPort"
-            @time-update="handleTimeUpdate"
-          />
+      <main class="flex-1 min-w-0 bg-slate-50 relative overflow-hidden">
+        <div class="h-full overflow-hidden p-4">
+          <div class="grid h-full min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(380px,0.85fr)] gap-4">
+            <div class="min-w-0 min-h-0 overflow-y-auto">
+              <VideoPlayer
+                ref="videoPlayerRef"
+                :server-port="serverPort"
+                @time-update="handleTimeUpdate"
+              />
+            </div>
 
-          <!-- 字幕显示区 -->
-          <SubtitleList
-            :current-time="currentTime"
-            @jump-to-time="jumpToTime"
-          />
+            <div class="min-w-0 min-h-0 flex flex-col gap-4">
+              <TranscriptionSourceCard />
+              <SubtitleList
+                class="flex-1 min-h-0"
+                :current-time="currentTime"
+                @jump-to-time="jumpToTime"
+              />
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -124,13 +128,14 @@
 
     <!-- 设置模态框 -->
     <SettingsModal
+      v-if="showSettings"
       :show="showSettings"
       @close="handleSettingsClose"
       :current-file="
         currentVideoPath ? currentVideoPath.split(/[\\/]/).pop() : '未选择'
       "
       :video-duration="videoDuration"
-      :is-whisper-ready="isWhisperAvailable"
+      :is-transcription-ready="isTranscriptionAvailable"
     />
     <!-- ✅ 全局加载遮罩层 (Loading Overlay) -->
     <div
@@ -156,7 +161,7 @@
         </div>
 
         <!-- 文本提示 -->
-        <h3 class="text-xl font-bold text-gray-800 mb-2">正在进行批量识别</h3>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">正在生成演示转写</h3>
         <div class="text-gray-500 text-center text-sm mb-6">
           <div class="text-sm text-gray-700">正在处理...</div>
           <br />
@@ -180,16 +185,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
-import { formatTime, parseSRT } from "./utils/subtitle-utils";
+import { ref, onMounted, watch } from "vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import SidebarQueue from "./components/SidebarQueue.vue";
 import VideoPlayer from "./components/VideoPlayer.vue";
 import SubtitleList from "./components/SubtitleList.vue";
+import TranscriptionSourceCard from "./components/TranscriptionSourceCard.vue";
 import CropModal from "./components/CropModal.vue";
 import { QueueItem } from "./types";
 import { useVideoQueue } from "./composables/useVideoQueue";
-import { useWhisper } from "./composables/useWhisper";
+import { useTranscription } from "./composables/useTranscription";
 
 // 全局状态
 const videoDuration = ref<number>(0);
@@ -222,15 +227,15 @@ const {
 } = useVideoQueue();
 
 const {
-  isRecognitionRunning, // Keep for lock check (isAnyTaskRunning)
   recognitionProgress, // Keep for Overlay
-  isWhisperAvailable, // Keep for SettingsModal prop
+  isTranscriptionAvailable,
   isAutoBatchMode, // Keep for Overlay
   isPolishing, // Keep for polish listeners? Actually App.vue doesn't use it anymore in template. But listeners update it.
   subtitles, // Keep for watcher
   checkEnvironment, // Keep for onMounted
-  polishingIds, // Keep if needed? App.vue doesn't seems to use it directly.
-} = useWhisper(loadVideoFromQueue);
+  importSubtitle,
+  clearTranscript,
+} = useTranscription(loadVideoFromQueue);
 
 // ✅ Watch currentVideoPath to handle player and subtitles
 watch(currentVideoPath, async (newPath) => {
@@ -239,38 +244,40 @@ watch(currentVideoPath, async (newPath) => {
     // Load Subtitles if available
     const item = videoQueue.value.find((v) => v.path === newPath);
     if (item) {
-      // Try to find SRT
-      const potentialSrt = newPath.replace(/\.[^/.]+$/, ".srt");
+      // Try to find adjacent subtitle files.
+      const candidates = [
+        newPath.replace(/\.[^/.]+$/, ".srt"),
+        newPath.replace(/\.[^/.]+$/, ".vtt"),
+      ];
       try {
-        const exists = await (window as any).api.invoke(
-          "check-file-exists",
-          potentialSrt,
-        );
-        if (exists) {
-          const content = await (window as any).api.invoke(
-            "read-file",
-            potentialSrt,
+        let loaded = false;
+        for (const subtitlePath of candidates) {
+          const exists = await (window as any).api.invoke(
+            "check-file-exists",
+            subtitlePath,
           );
-          if (content) {
-            const parsed = parseSRT(content);
-            subtitles.value = parsed;
-            item.status = "completed"; // Mark as completed if srt exists? Maybe not.
-            item.srtPath = potentialSrt;
+          if (!exists) {
+            continue;
           }
-        } else {
-          subtitles.value = [];
+
+          const result = await importSubtitle(subtitlePath, newPath);
+          if (result) {
+            item.status = "completed";
+            item.srtPath = subtitlePath;
+            loaded = true;
+            break;
+          }
+        }
+
+        if (!loaded) {
+          clearTranscript();
         }
       } catch (e) {
         console.warn("Failed to load subtitles:", e);
-        subtitles.value = [];
+        clearTranscript();
       }
     }
   }
-});
-
-// ✅ 全局任务独占锁：任何任务运行时都禁用其他操作
-const isAnyTaskRunning = computed(() => {
-  return isRecognitionRunning.value;
 });
 
 // videoRef removed (replaced by videoPlayerRef)
@@ -346,8 +353,8 @@ onMounted(async () => {
     });
   }
 
-  // ✅ Auto-check environment on startup
-  console.log("🚀 Auto-checking environment on startup...");
+  // Provider-based transcription is ready without local models.
+  console.log("Transcription providers ready.");
   await checkEnvironment();
 
   await getServerPort();

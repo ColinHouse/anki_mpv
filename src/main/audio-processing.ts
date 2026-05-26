@@ -118,7 +118,7 @@ export const extractAudioSegments = async (
         try {
           const files = await fs.promises.readdir(segmentsDir);
           // readdir 不保证顺序
-          // 如果后面要按时间顺序处理音频（比如 Whisper）——顺序一错，文本就乱了
+          // 如果后面要按时间顺序处理音频片段，顺序一错，文本就乱了
           const segmentFiles = files
             .filter(
               (file) => file.startsWith("chunk_") && file.endsWith(".wav"),

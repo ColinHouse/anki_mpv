@@ -94,7 +94,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { useVideoQueue } from "../composables/useVideoQueue";
-import { useWhisper } from "../composables/useWhisper";
+import { useTranscription } from "../composables/useTranscription";
 
 const props = defineProps<{
   serverPort: number | null;
@@ -106,7 +106,7 @@ const emit = defineEmits<{
 
 // Global State
 const { currentVideoPath, selectedFile } = useVideoQueue();
-const { isAutoBatchMode, subtitles } = useWhisper();
+const { isAutoBatchMode, subtitles } = useTranscription();
 
 // Local State
 const videoRef = ref<HTMLVideoElement>();

@@ -59,18 +59,25 @@ declare global {
       getVideoInfo?: (filePath: string) => Promise<any>
       trimVideo?: (inputPath: string, startTime: number, endTime: number) => Promise<string>
       
-      // Whisper operations
+      // Legacy local transcription operations
       ensureModel?: () => Promise<any>
       runWhisper?: (audioPath: string, modelPath: string, language: string) => Promise<any>
       runWhisperSegments?: (videoPath: string, language: string, segmentDuration: number) => Promise<any>
       stopWhisper?: () => Promise<void>
       checkWhisperAvailability?: () => Promise<boolean>
       
-      // Whisper event listeners
+      // Legacy local transcription event listeners
       onWhisperStatus?: (callback: (event: any, progress: any) => void) => void
       removeWhisperStatusListener?: (callback: (event: any, progress: any) => void) => void
       onWhisperChunkCompleted?: (callback: (event: any, data: any) => void) => void
       removeWhisperChunkCompletedListener?: (callback: (event: any, data: any) => void) => void
+
+      // Provider-based transcription
+      importSubtitleTranscript?: (input: any) => Promise<any>
+      runMockCloudTranscription?: (input: any) => Promise<any>
+      runCloudTranscription?: (input: any) => Promise<any>
+      getCachedTranscript?: (input: any) => Promise<any>
+      clearTranscriptCache?: () => Promise<any>
       
       // Settings
       getSettings?: () => Promise<any>

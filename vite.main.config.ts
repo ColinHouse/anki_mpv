@@ -8,11 +8,7 @@ export default defineConfig({
       external: [
         'ffmpeg-static',
         'fluent-ffmpeg',
-        'whisper-node',
         'axios',
-        'node-llama-cpp',
-        // Exclude node-llama-cpp native bindings
-        /^@node-llama-cpp\/.*/,
         'child_process', // 内置模块也建议显式排除
         'fs',
         'path',

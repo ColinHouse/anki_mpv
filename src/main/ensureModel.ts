@@ -3,12 +3,16 @@ import path from "node:path";
 import axios from "axios";
 import { app } from "electron";
 
-// 最小体积阈值 - Whisper models
-const MIN_SIZES: Record<string, number> = {
-  base: 130 * 1024 * 1024,
-  small: 450 * 1024 * 1024,
-  medium: 1400 * 1024 * 1024
+const LEGACY_LOCAL_STT_MODELS = new Set(["base", "small", "medium"]);
+
+type ProgressCallback = (progress: number) => void;
+
+type ActiveDownload = {
+  promise: Promise<boolean>;
+  progressCallbacks: Set<ProgressCallback>;
 };
+
+const activeDownloads = new Map<string, ActiveDownload>();
 
 // GGUF LLM模型配置
 export const GGUF_MODELS = {
@@ -26,8 +30,8 @@ const getResourcesPath = () => {
 };
 
 export const getModelPath = (modelName: string) => {
-  // 如果是 Whisper 模型 (base/small/medium)
-  if (['base', 'small', 'medium'].includes(modelName)) {
+  // Legacy local STT model path. These models are no longer used by the default app flow.
+  if (LEGACY_LOCAL_STT_MODELS.has(modelName)) {
     return path.join(getResourcesPath(), `ggml-${modelName}.bin`);
   }
   
@@ -40,28 +44,30 @@ export const getModelPath = (modelName: string) => {
   return path.join(getResourcesPath(), modelName);
 };
 
+const getMinimumModelSize = (name: string): number => {
+  if (GGUF_MODELS[name as keyof typeof GGUF_MODELS]) {
+    return GGUF_MODELS[name as keyof typeof GGUF_MODELS].minSize;
+  }
+
+  return 100 * 1024 * 1024;
+};
+
 export const checkModelExists = (modelName: string): boolean => {
   const name = modelName.toLowerCase();
   const modelPath = getModelPath(name);
+
+  if (LEGACY_LOCAL_STT_MODELS.has(name)) {
+    return false;
+  }
   
   if (fs.existsSync(modelPath)) {
     try {
       const stats = fs.statSync(modelPath);
       
-      // 确定最小大小阈值
-      let minSize = 100 * 1024 * 1024; // 默认100MB
-      
-      if (MIN_SIZES[name]) {
-        // Whisper 模型
-        minSize = MIN_SIZES[name];
-      } else if (GGUF_MODELS[name as keyof typeof GGUF_MODELS]) {
-        // GGUF 模型
-        minSize = GGUF_MODELS[name as keyof typeof GGUF_MODELS].minSize;
-      }
+      const minSize = getMinimumModelSize(name);
       
       if (stats.size < minSize) {
-        console.warn(`⚠️ Model corrupted (size: ${stats.size}, expected: ${minSize}). Deleting: ${modelPath}`);
-        fs.unlinkSync(modelPath);
+        console.warn(`⚠️ Model incomplete (size: ${stats.size}, expected: ${minSize}): ${modelPath}`);
         return false;
       }
       return true;
@@ -72,61 +78,114 @@ export const checkModelExists = (modelName: string): boolean => {
   return false;
 };
 
+const notifyProgress = (download: ActiveDownload, progress: number) => {
+  for (const callback of download.progressCallbacks) {
+    try {
+      callback(progress);
+    } catch (error) {
+      console.warn("Model progress callback failed:", error);
+    }
+  }
+};
+
+const downloadModel = async (name: string, download: ActiveDownload): Promise<boolean> => {
+  const modelPath = getModelPath(name);
+  const modelDir = path.dirname(modelPath);
+  const tempPath = `${modelPath}.download`;
+  await fs.promises.mkdir(modelDir, { recursive: true });
+  await fs.promises.rm(tempPath, { force: true });
+
+  // 确定下载 URL
+  let downloadUrl = "";
+  
+  if (!GGUF_MODELS[name as keyof typeof GGUF_MODELS]) {
+    throw new Error(`No downloadable local model is configured for ${name}.`);
+  }
+
+  // LLM 模型下载
+  downloadUrl = GGUF_MODELS[name as keyof typeof GGUF_MODELS].url;
+  console.log(`⬇️ Downloading LLM model ${name} from ${downloadUrl}`);
+
+  try {
+    const response = await axios({
+      method: "GET",
+      url: downloadUrl,
+      responseType: "stream",
+      onDownloadProgress: (p) => {
+        if (p.total) {
+          notifyProgress(download, Math.round((p.loaded / p.total) * 100));
+        }
+      }
+    });
+    
+    const writer = fs.createWriteStream(tempPath);
+    response.data.pipe(writer);
+    
+    await new Promise<void>((resolve, reject) => {
+      response.data.on("error", reject);
+      writer.on("finish", resolve);
+      writer.on("error", reject);
+    });
+
+    const stats = await fs.promises.stat(tempPath);
+    const minSize = getMinimumModelSize(name);
+    if (stats.size < minSize) {
+      throw new Error(`Download incomplete: ${stats.size} bytes, expected at least ${minSize}`);
+    }
+
+    await fs.promises.rm(modelPath, { force: true });
+    await fs.promises.rename(tempPath, modelPath);
+
+    notifyProgress(download, 100);
+    console.log(`✅ Model ${name} downloaded successfully`);
+    return true;
+  } catch (error) {
+    await fs.promises.rm(tempPath, { force: true }).catch((): undefined => undefined);
+    throw error;
+  }
+};
+
 export const ensureModel = async (
   modelName = "small",
-  onProgress?: (progress: number) => void
+  onProgress?: ProgressCallback
 ): Promise<boolean> => {
   try {
     const name = modelName.toLowerCase();
+
+    if (LEGACY_LOCAL_STT_MODELS.has(name)) {
+      console.info("Local speech models are deprecated in the default workflow.");
+      return false;
+    }
+
+    const activeDownload = activeDownloads.get(name);
+    if (activeDownload) {
+      if (onProgress) {
+        activeDownload.progressCallbacks.add(onProgress);
+      }
+      return activeDownload.promise;
+    }
     
     // 检查模型是否已存在
     if (checkModelExists(name)) {
       if (onProgress) onProgress(100);
       return true;
     }
-    
-    const modelPath = getModelPath(name);
-    const modelDir = path.dirname(modelPath);
-    await fs.promises.mkdir(modelDir, { recursive: true });
 
-    // 确定下载 URL
-    let downloadUrl = "";
-    
-    if (GGUF_MODELS[name as keyof typeof GGUF_MODELS]) {
-      // LLM 模型下载
-      downloadUrl = GGUF_MODELS[name as keyof typeof GGUF_MODELS].url;
-      console.log(`⬇️ Downloading LLM model ${name} from ${downloadUrl}`);
-    } else {
-      // Whisper 模型下载
-      downloadUrl = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${name}.bin`;
-      console.log(`⬇️ Downloading Whisper model ${name} from ${downloadUrl}`);
+    const download: ActiveDownload = {
+      promise: Promise.resolve(false),
+      progressCallbacks: new Set<ProgressCallback>(),
+    };
+
+    if (onProgress) {
+      download.progressCallbacks.add(onProgress);
     }
 
-    const response = await axios({
-      method: "GET",
-      url: downloadUrl,
-      responseType: "stream",
-      onDownloadProgress: (p) => {
-        if (p.total && onProgress) {
-          onProgress(Math.round((p.loaded / p.total) * 100));
-        }
-      }
+    download.promise = downloadModel(name, download).finally(() => {
+      activeDownloads.delete(name);
     });
-    
-    const writer = fs.createWriteStream(modelPath);
-    response.data.pipe(writer);
-    
-    return new Promise((resolve, reject) => {
-      writer.on("finish", () => {
-        if (checkModelExists(name)) {
-          console.log(`✅ Model ${name} downloaded successfully`);
-          resolve(true);
-        } else {
-          reject(new Error("Download corrupted"));
-        }
-      });
-      writer.on("error", reject);
-    });
+    activeDownloads.set(name, download);
+
+    return download.promise;
   } catch (e) {
     console.error("Ensure model failed:", e);
     return false;
